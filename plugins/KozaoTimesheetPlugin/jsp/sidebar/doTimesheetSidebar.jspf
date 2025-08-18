@@ -1,0 +1,48 @@
+<%-- plugins/KozaoTimesheetPlugin/jsp/app/doTimesheetSidebar.jspf --%>
+<%@ page import="com.jalios.jcms.uicomponent.app.AppConstants"%>
+
+<jalios:appSidebar css="no-focus"
+	icon="plugins/KozaoTimesheetPlugin/images/icon.png"
+	appUrl="<%=appUrl%>" formAction="<%=appUrl%>"
+	iconTitleProp="jcmsplugin.kozaotimesheet.app.title">
+
+	<jalios:appSidebarSection name="views"
+		title='<%=glp("jcmsplugin.kozaotimesheet.app.sidebar.views")%>'>
+		<ul class="app-sidebar-menu">
+			<li
+				class="<%="employee".equals(request.getAttribute("view")) ? "active" : ""%>">
+				<a href="<%=(String) request.getAttribute("employeeUrl")%>"> <jalios:icon
+						src="jalios-icons-user" /> <%=glp("jcmsplugin.kozaotimesheet.app.view.mytimesheets")%>
+			</a>
+			</li>
+
+			<%
+			if (Boolean.TRUE.equals(request.getAttribute("isManager"))) {
+			%>
+			<li
+				class="<%="manager".equals(request.getAttribute("view")) ? "active" : ""%>">
+				<a href="<%=(String) request.getAttribute("managerUrl")%>"> <jalios:icon
+						src="jalios-icons-briefcase" /> <%=glp("jcmsplugin.kozaotimesheet.app.view.manager")%>
+			</a>
+			</li>
+			<%
+			}
+			%>
+		</ul>
+	</jalios:appSidebarSection>
+
+	<jalios:appSidebarSection name="actions"
+		title='<%=glp("jcmsplugin.kozaotimesheet.app.sidebar.actions")%>'>
+		<%
+		// Chemin direct vers la modale dans le nouveau dossier "jsp/modal/"
+		String ctx = request.getContextPath();
+		String createUrl = ctx + "/plugins/KozaoTimesheetPlugin/jsp/modal/editTimesheetModal.jsp";
+		%>
+
+		<a href="<%=encodeForHTMLAttribute(createUrl)%>"
+			class="btn btn-primary app-sidebar-button modal open-timesheet-modal"
+			role="button"> <jalios:icon src="jalios-icons-plus" /> <%=glp("jcmsplugin.kozaotimesheet.app.btn.new-timesheet")%>
+		</a>
+	</jalios:appSidebarSection>
+
+</jalios:appSidebar>

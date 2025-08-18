@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates version="5.0">
+  <template name="default" usage="box" file="doSaisieHoraireFullDisplay.jsp">
+    <label xml:lang="en">Default template</label>
+    <label xml:lang="fr">Gabarit par défaut</label>
+    <description xml:lang="en">The default template for this publication</description>
+    <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
+  </template>
+  <template name="default" usage="edit" file="editSaisieHoraire.jsp">
+    <label xml:lang="en">Default template</label>
+    <label xml:lang="fr">Gabarit par défaut</label>
+    <description xml:lang="en">The default template for this publication</description>
+    <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
+  </template>
+  <template name="default" usage="editModal" file="editSaisieHoraireModal.jsp">
+    <label xml:lang="en">Default template</label>
+    <label xml:lang="fr">Gabarit par défaut</label>
+    <description xml:lang="en">The default template for this publication</description>
+    <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
+  </template>
+  <template name="default" usage="editModalFull" file="editSaisieHoraireModalFull.jsp">
+    <label xml:lang="en">Default template</label>
+    <label xml:lang="fr">Gabarit par défaut</label>
+    <description xml:lang="en">The default template for this publication</description>
+    <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
+  </template>
+  <template name="default" usage="full" file="doSaisieHoraireFullDisplay.jsp">
+    <label xml:lang="en">Default template</label>
+    <label xml:lang="fr">Gabarit par défaut</label>
+    <description xml:lang="en">The default template for this publication</description>
+    <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
+  </template>
+  <template name="default" usage="query" file="doSaisieHoraireResultDisplay.jsp">
+    <label xml:lang="en">Default template</label>
+    <label xml:lang="fr">Gabarit par défaut</label>
+    <description xml:lang="en">The default template for this publication</description>
+    <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
+  </template>
+</templates>
+

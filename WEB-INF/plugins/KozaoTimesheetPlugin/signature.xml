@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<signature name="KozaoTimesheetPlugin" urid="c" type="plugin" date="1754466094315">
+  <sign file="WEB-INF/plugins/KozaoTimesheetPlugin/plugin.xml" signature="Ipvrtrgw/cflla2In6yibw==" />
+  <sign file="WEB-INF/plugins/KozaoTimesheetPlugin/properties/languages/en.prop" signature="1B2M2Y8AsgTpgAmY7PhCfg==" />
+  <sign file="WEB-INF/plugins/KozaoTimesheetPlugin/properties/languages/fr.prop" signature="1B2M2Y8AsgTpgAmY7PhCfg==" />
+  <sign file="WEB-INF/plugins/KozaoTimesheetPlugin/properties/plugin.prop" signature="lT/m+I/VCgML0RgD3gTKPg==" />
+  <sign file="plugins/KozaoTimesheetPlugin/css/plugin.less" signature="zHZWfVTq7l250BIdKe09Xw==" />
+  <sign file="plugins/KozaoTimesheetPlugin/js/jalios-boilerplate.js" signature="g7LruE5W6eAxVG9tPtDxGg==" />
+  <sign file="plugins/KozaoTimesheetPlugin/js/plugin.js" signature="kKxJsru5drNbVbeiJszbtw==" />
+  <sign file="plugins/KozaoTimesheetPlugin/jsp/plugin.jsp" signature="HhHXCuU58jmkb/WkRU9Duw==" />
+</signature>
+

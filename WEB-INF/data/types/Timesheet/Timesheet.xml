@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<type name="Timesheet" superclass="com.jalios.jcms.Content"
+	debatable="false" unitFieldEdition="true" audienced="false"
+	categoryTab="true" readRightTab="true" updateRightTab="true"
+	templateTab="false" workflowTab="true" advancedTab="true"
+	database="true" hbm="true" revision="true" categories="">
+	<title ml="true">
+		<label xml:lang="en">Title</label>
+		<label xml:lang="fr">Titre</label>
+	</title>
+
+	<fields>
+		<field name="timeEntries" editor="link" required="false"
+			compactDisplay="false" type="List&lt;generated.TimeEntry&gt;"
+			ml="false" descriptionType="tooltip" searchable="false" html="false"
+			checkHtml="true">
+			<label xml:lang="fr">Saisies des heures</label>
+		</field>
+
+		<field name="weekNumber" editor="int" required="false"
+			compactDisplay="false" type="int" default="0" ml="false"
+			descriptionType="tooltip" searchable="false" html="false"
+			checkHtml="true" unitPos="after">
+			<label xml:lang="fr">Numéro de semaine</label>
+		</field>
+
+		<field name="employee" editor="member" required="false"
+			compactDisplay="false" type="com.jalios.jcms.Member" chooser="popup"
+			ml="false" descriptionType="tooltip" searchable="false" html="false"
+			checkHtml="true">
+			<label xml:lang="fr">Employé</label>
+		</field>
+
+		<field name="status" editor="enumerate" required="false"
+			compactDisplay="false" type="String" chooser="listbox"
+			valueList="DRAFT|SUBMITTED|APPROVED|REJECTED" ml="false"
+			descriptionType="tooltip"
+			labelList="Brouillon|Soumis|Approuvé|Rejeté" searchable="false"
+			html="false" checkHtml="true">
+			<label xml:lang="fr">Statut</label>
+		</field>
+
+		<field name="totalHours" editor="double" required="false"
+			compactDisplay="false" type="double" decimals="2" default="0"
+			ml="false" descriptionType="tooltip" searchable="false" html="false"
+			checkHtml="true" unitPos="after">
+			<label xml:lang="fr">Total Heures Semaine</label>
+		</field>
+
+		<field name="rejectionComment" editor="wysiwyg" required="false"
+			compactDisplay="false" type="String" searchable="true" rows="5"
+			cols="80" ml="true" checkHtml="true" inline="true"
+			descriptionType="tooltip" html="false">
+			<label xml:lang="fr">Commentaire de rejet</label>
+		</field>
+	</fields>
+
+	<label xml:lang="fr">Feuille de temps</label>
+</type>

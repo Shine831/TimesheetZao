@@ -1,0 +1,43 @@
+<%-- plugins/KozaoTimesheetPlugin/jsp/app/doTimesheetBody.jspf --%>
+<%-- Pas de redeclaration de variables déjà définies par timesheetApp.jsp --%>
+
+<%
+String currentView = String.valueOf(request.getAttribute("view"));
+boolean managerFlag = Boolean.TRUE.equals(request.getAttribute("isManager"));
+%>
+
+<%
+if ("manager".equals(currentView)) {
+%>
+
+<%
+if (!managerFlag) {
+%>
+<div class="app-body">
+	<div class="container-fluid">
+		<div class="alert alert-danger" role="alert">
+			<strong><%=glp("jcmsplugin.kozaotimesheet.access.denied")%></strong>
+			<p><%=glp("jcmsplugin.kozaotimesheet.access.denied.detail")%></p>
+		</div>
+	</div>
+</div>
+<%
+} else {
+%>
+<%@ include
+	file='/plugins/KozaoTimesheetPlugin/jsp/view/managerView.jspf'%>
+
+<%
+}
+%>
+
+<%
+} else {
+%>
+
+<%@ include
+	file='/plugins/KozaoTimesheetPlugin/jsp/view/timesheetView.jspf'%>
+
+<%
+}
+%>
