@@ -4,9 +4,6 @@ import com.jalios.jcms.handler.QueryHandler;
 import com.jalios.jcms.Channel;
 import com.jalios.jcms.Group;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Iterator;
 import generated.Project;
 import generated.ProjectTask;
 
