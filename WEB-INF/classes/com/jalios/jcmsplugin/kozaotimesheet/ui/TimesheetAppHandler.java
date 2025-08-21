@@ -1,11 +1,19 @@
 package com.jalios.jcmsplugin.kozaotimesheet.ui;
 
 import com.jalios.jcms.handler.QueryHandler;
+import com.jalios.jcms.Channel;
+import com.jalios.jcms.Member;
+import com.jalios.jcms.Group;
+
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
-import java.lang.reflect.Method;
-import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+
+import generated.Project;
+import generated.ProjectTask;
 
 public class TimesheetAppHandler extends QueryHandler {
 
@@ -35,7 +43,7 @@ public class TimesheetAppHandler extends QueryHandler {
 			this.currentWeekNumber = (year * 100) + week;
 		}
 
-		// Récupération sûre du paramètre "view" via la requête HTTP
+		// récupération sécurisée du paramètre "view"
 		String viewParam = null;
 		try {
 			if (getRequest() != null) {
@@ -50,35 +58,23 @@ public class TimesheetAppHandler extends QueryHandler {
 			if (canAccessManagerView()) {
 				this.currentView = View.MANAGER_VIEW;
 			} else {
-				// défense en profondeur : ne pas lancer d'API qui pourrait ne pas exister.
-				// expose un attribut pour que JSP affiche un message d'accès refusé.
 				try {
 					if (getRequest() != null) {
 						getRequest().setAttribute("accessDenied", Boolean.TRUE);
 					}
 				} catch (Throwable ignore) {
 				}
-				// on reste en vue employé (par défaut)
 				this.currentView = View.MY_TIMESHEETS;
 			}
 		} else {
 			this.currentView = View.MY_TIMESHEETS;
 		}
 
-		// expose current view (utile aux JSPf)
-		try {
-			if (getRequest() != null) {
-				getRequest().setAttribute("handlerCurrentView",
-						this.currentView == View.MANAGER_VIEW ? "manager" : "employee");
-			}
-		} catch (Throwable ignore) {
-		}
-		// expose des attributs pratiques pour les JSPf (compatibilité et simplicité)
+		// expose attributs pour JSPs
 		try {
 			if (getRequest() != null) {
 				String viewStr = (this.currentView == View.MANAGER_VIEW) ? "manager" : "employee";
 
-				// URLs robustes (utilisent getAppUrl())
 				String baseAppUrl = getAppUrl();
 				String employeeUrl = baseAppUrl + (baseAppUrl.indexOf('?') >= 0 ? "&view=employee" : "?view=employee");
 				String managerUrl = baseAppUrl + (baseAppUrl.indexOf('?') >= 0 ? "&view=manager" : "?view=manager");
@@ -88,8 +84,6 @@ public class TimesheetAppHandler extends QueryHandler {
 				getRequest().setAttribute("employeeUrl", employeeUrl);
 				getRequest().setAttribute("managerUrl", managerUrl);
 
-				// indique si l'utilisateur est autorisé (utilise la méthode existante
-				// canAccessManagerView)
 				boolean isManager = false;
 				try {
 					isManager = canAccessManagerView();
@@ -98,19 +92,52 @@ public class TimesheetAppHandler extends QueryHandler {
 				getRequest().setAttribute("isManager", Boolean.valueOf(isManager));
 			}
 		} catch (Throwable ignore) {
-			// Never fail init because of request attribute setting
+			// never fail init because of request attribute setting
 		}
 
+		// --- Fournir allowedProjects / allowedTasks (typié) pour la modale ---
+		try {
+			if (getRequest() != null) {
+				List<Project> allowedProjects = new ArrayList<Project>();
+				List<ProjectTask> allowedTasks = new ArrayList<ProjectTask>();
+
+				Channel ch = Channel.getChannel();
+				if (ch != null) {
+					// récupération typée via API Channel (retourne Set)
+					try {
+						Set<Project> projSet = ch.getPublicationSet(Project.class, this.loggedMember);
+						if (projSet != null)
+							allowedProjects.addAll(projSet);
+					} catch (Throwable ignore) {
+						// fallback: ignore if method not present in this JCMS version
+					}
+
+					try {
+						Set<ProjectTask> taskSet = ch.getPublicationSet(ProjectTask.class, this.loggedMember);
+						if (taskSet != null)
+							allowedTasks.addAll(taskSet);
+					} catch (Throwable ignore) {
+						// fallback
+					}
+				}
+
+				getRequest().setAttribute("allowedProjects", allowedProjects);
+				getRequest().setAttribute("allowedTasks", allowedTasks);
+			}
+		} catch (Throwable ignore) {
+			// do not fail init
+		}
 	}
 
 	@Override
 	public boolean processAction() throws IOException {
-		// La logique de sauvegarde sera gérée par un Edit...Handler dédié plus tard.
+		// Pas de traitement spécifique ici
 		return false;
 	}
 
 	public String getAppUrl() {
-		// return with leading slash to make links robust
+		// Keep same style as existing code (no leading slash) for compatibility with
+		// sidebar logic
 		return "plugins/KozaoTimesheetPlugin/jsp/app/timesheetApp.jsp";
 	}
 
@@ -138,16 +165,13 @@ public class TimesheetAppHandler extends QueryHandler {
 	 * appartenance groupe.
 	 */
 	public boolean canAccessManagerView() {
-		// 1) try native checkAccess if available
 		try {
-			// checkAccess is part of some JCMS API (may throw if not present)
 			boolean res = checkAccess(ACL_MANAGER_VIEW);
 			return res;
 		} catch (Throwable t) {
 			// fallback below
 		}
 
-		// 2) fallback: check membership in common group names
 		try {
 			if (isMemberOfGroup("Gestionnaires"))
 				return true;
@@ -156,7 +180,7 @@ public class TimesheetAppHandler extends QueryHandler {
 			if (isMemberOfGroup("ROLE_GESTIONNAIRES"))
 				return true;
 			if (isMemberOfGroup("Administrateurs"))
-				return true; // optional: admins
+				return true;
 		} catch (Throwable ignore) {
 		}
 
@@ -164,142 +188,31 @@ public class TimesheetAppHandler extends QueryHandler {
 	}
 
 	/**
-	 * Méthode robuste d'appartenance à un groupe (réflexion).
+	 * Méthode robuste d'appartenance à un groupe (compatible Group[]).
 	 */
 	public boolean isMemberOfGroup(String groupName) {
+		if (this.loggedMember == null)
+			return false;
 		try {
-			if (this.loggedMember == null)
-				return false;
-
-			// 1) try loggedMember.isMemberOf(String)
-			try {
-				Method isMemberOf = this.loggedMember.getClass().getMethod("isMemberOf", String.class);
-				Object res = isMemberOf.invoke(this.loggedMember, groupName);
-				if (res instanceof Boolean)
-					return (Boolean) res;
-			} catch (NoSuchMethodException nsme) {
-				// ignore
-			} catch (Throwable t) {
-				// ignore
-			}
-
-			// 2) try getGroups()
-			try {
-				Method getGroups = this.loggedMember.getClass().getMethod("getGroups");
-				Object groupsObj = getGroups.invoke(this.loggedMember);
-				if (groupsObj instanceof Collection) {
-					@SuppressWarnings("unchecked")
-					Collection<Object> groups = (Collection<Object>) groupsObj;
-					for (Object g : groups) {
-						if (g == null)
-							continue;
-						// try getName/getId/getLabel
-						try {
-							Method getName = g.getClass().getMethod("getName");
-							Object name = getName.invoke(g);
-							if (groupName.equalsIgnoreCase(String.valueOf(name)))
-								return true;
-						} catch (Throwable ignore) {
-						}
-						try {
-							Method getId = g.getClass().getMethod("getId");
-							Object id = getId.invoke(g);
-							if (groupName.equalsIgnoreCase(String.valueOf(id)))
-								return true;
-						} catch (Throwable ignore) {
-						}
-						try {
-							Method getLabel = g.getClass().getMethod("getLabel");
-							Object label = getLabel.invoke(g);
-							if (groupName.equalsIgnoreCase(String.valueOf(label)))
-								return true;
-						} catch (Throwable ignore) {
-						}
-						// fallback toString()
-						if (groupName.equalsIgnoreCase(String.valueOf(g)))
+			Group[] groups = this.loggedMember.getGroups();
+			if (groups != null) {
+				for (Group g : groups) {
+					try {
+						if (g != null && groupName.equalsIgnoreCase(g.getName()))
 							return true;
-					}
-				} else if (groupsObj != null && groupsObj.getClass().isArray()) {
-					Object[] arr = (Object[]) groupsObj;
-					for (Object g : arr) {
-						if (g == null)
-							continue;
-						try {
-							Method getName = g.getClass().getMethod("getName");
-							Object name = getName.invoke(g);
-							if (groupName.equalsIgnoreCase(String.valueOf(name)))
-								return true;
-						} catch (Throwable ignore) {
-						}
+					} catch (Throwable ignore) {
 					}
 				}
-			} catch (NoSuchMethodException nsme) {
-				// ignore
-			} catch (Throwable t) {
-				// ignore
 			}
-
-			// 3) try getGroupIds()
-			try {
-				Method getGroupIds = this.loggedMember.getClass().getMethod("getGroupIds");
-				Object idsObj = getGroupIds.invoke(this.loggedMember);
-				if (idsObj instanceof Collection) {
-					@SuppressWarnings("unchecked")
-					Collection<Object> ids = (Collection<Object>) idsObj;
-					for (Object id : ids) {
-						if (groupName.equalsIgnoreCase(String.valueOf(id)))
-							return true;
-					}
-				} else if (idsObj != null && idsObj.getClass().isArray()) {
-					Object[] idsArr = (Object[]) idsObj;
-					for (Object id : idsArr) {
-						if (groupName.equalsIgnoreCase(String.valueOf(id)))
-							return true;
-					}
-				}
-			} catch (Throwable ignore) {
-			}
-
-		} catch (Throwable t) {
-			// safe fallback
+		} catch (Throwable ignore) {
 		}
 		return false;
 	}
 
-	// --- add this method in TimesheetAppHandler.java ---
-
 	/**
-	 * Retourne true si le membre courant est considéré comme "gestionnaire". 1)
-	 * Essaye checkAccess(ACL_MANAGER_VIEW) si disponible (préférence à l'ACL). 2)
-	 * Fallback : vérifie l'appartenance à des noms techniques/usages courants.
+	 * Retourne true si membre courant considéré comme gestionnaire (alias).
 	 */
 	public boolean isManager() {
-		// constant for resource key (assure-toi que cette constante existe si tu
-		// l'utilises)
-		final String ACL_KEY = "jcmsplugin.kozaotimesheet.app.manager-view";
-
-		try {
-			// 1) try native ACL check (may throw if not available)
-			try {
-				boolean res = checkAccess(ACL_KEY);
-				return res;
-			} catch (Throwable t) {
-				// ignore and fallback to group checks
-			}
-
-			// 2) fallback: check membership in common group names
-			if (isMemberOfGroup("Gestionnaires"))
-				return true;
-			if (isMemberOfGroup("gestionnaires"))
-				return true;
-			if (isMemberOfGroup("ROLE_GESTIONNAIRES"))
-				return true;
-			if (isMemberOfGroup("Administrateurs"))
-				return true; // optionally allow admins
-
-		} catch (Throwable t) {
-			// safe fallback
-		}
-		return false;
+		return canAccessManagerView();
 	}
 }

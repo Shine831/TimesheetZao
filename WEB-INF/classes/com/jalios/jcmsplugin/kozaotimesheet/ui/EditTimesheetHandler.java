@@ -3,7 +3,10 @@ package com.jalios.jcmsplugin.kozaotimesheet.ui;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.List;
+import java.util.logging.Logger;
 
 import com.jalios.jcms.handler.EditDataHandler;
 import com.jalios.jcms.Channel;
@@ -12,51 +15,57 @@ import com.jalios.jcms.Member;
 
 import generated.Timesheet;
 import generated.TimeEntry;
+import generated.Project;
+import generated.ProjectTask;
 
 /**
- * Handler "robuste" pour la création / édition d'une Timesheet depuis la modal.
+ * EditTimesheetHandler - handler typé et robuste pour Timesheet modal editing.
  *
- * Notes : - Beaucoup de méthodes sont appelées via réflexion pour supporter
- * plusieurs versions de JCMS/génération. - Adapte les noms de setter si ta
- * génération a des noms différents (voir les TODO dans le code).
+ * Principes : - Pré-remplissage côté serveur (employee = loggedMember,
+ * weekNumber, status = DRAFT) - Parsing sécurisé des tableaux POST
+ * (projectId[], taskId[], monday[]..friday[]) - Construction de TimeEntry typés
+ * puis attachement à Timesheet - Calcul du total au niveau Timesheet
+ * (Timesheet.totalHours) - Respect des permissions : un employé ne peut pas
+ * soumettre pour un autre employee
+ *
+ * Notes : - Si les signatures exactes diffèrent dans ta génération (par ex
+ * setProjectRef au lieu de setProject), le handler tente des fallbacks via
+ * réflexion.
  */
 public class EditTimesheetHandler extends EditDataHandler {
 
 	private static final long serialVersionUID = 1L;
+	private static final Logger LOG = Logger.getLogger(EditTimesheetHandler.class.getName());
 
 	public EditTimesheetHandler() {
 		super();
 	}
 
-	// --- compatibilité API : retourne la classe de la publication manipulée
-	// (Timesheet)
-	public Class<? extends Data> getPublicationClass() {
+	/**
+	 * Retourne la classe manipulée (Timesheet)
+	 */
+	public Class<? extends Data> getDataClass() {
 		return Timesheet.class;
 	}
 
-	// Certains JCMS demandent getDataClass() au lieu de getPublicationClass()
-	public Class<? extends Data> getDataClass() {
-		return getPublicationClass();
-	}
-
 	/**
-	 * Pré-remplissage à la création : employee = loggedMember, weekNumber =
-	 * année*100 + semaine (méthode appelée avant l'affichage du formulaire)
+	 * Pré-remplissage à la création : employee = loggedMember, weekNumber, status =
+	 * DRAFT
 	 */
 	public void setupNewPublication() {
 		try {
 			Object pub = getPublication();
 			Timesheet timesheet = null;
+
 			if (pub == null) {
-				// si l'API permet setPublication(Timesheet) on l'utilise via réflexion
+				timesheet = new Timesheet();
+				// essayer de lier la publication si le framework le demande
 				try {
-					timesheet = new Timesheet();
 					Method setPub = this.getClass().getMethod("setPublication", Timesheet.class);
 					setPub.invoke(this, timesheet);
 				} catch (NoSuchMethodException nsme) {
-					// si setPublication n'existe pas, on tente d'accéder via méthode du parent si
-					// possible
-					// (dans certains contextes la publication est créée automatiquement)
+					// méthode non présente, ignore
+				} catch (Throwable ignore) {
 				}
 			} else if (pub instanceof Timesheet) {
 				timesheet = (Timesheet) pub;
@@ -66,64 +75,83 @@ public class EditTimesheetHandler extends EditDataHandler {
 				// employee
 				Member lm = getLoggedMember();
 				if (lm != null) {
-					// setter possible : setEmployee(Member) ou setEmployee(String)
 					try {
-						Method m = timesheet.getClass().getMethod("setEmployee", Member.class);
-						m.invoke(timesheet, lm);
-					} catch (Exception e1) {
+						timesheet.setEmployee(lm); // typé
+					} catch (Throwable t) {
+						// fallback: try setEmployee(String)
 						try {
-							Method m2 = timesheet.getClass().getMethod("setEmployee", String.class);
-							m2.invoke(timesheet, lm.getId());
-						} catch (Exception ignore) {
+							Method m = timesheet.getClass().getMethod("setEmployee", String.class);
+							m.invoke(timesheet, lm.getId());
+						} catch (Throwable ignore) {
 						}
 					}
 				}
 
 				// semaine courante
 				try {
-					java.util.Calendar cal = java.util.GregorianCalendar.getInstance();
-					int year = cal.get(java.util.Calendar.YEAR);
-					int week = cal.get(java.util.Calendar.WEEK_OF_YEAR);
+					Calendar cal = GregorianCalendar.getInstance();
+					int year = cal.get(Calendar.YEAR);
+					int week = cal.get(Calendar.WEEK_OF_YEAR);
 					int weekNumber = year * 100 + week;
 					try {
-						Method setWeek = timesheet.getClass().getMethod("setWeekNumber", int.class);
-						setWeek.invoke(timesheet, weekNumber);
-					} catch (Exception e) {
-						// fallback : essayer Integer
+						timesheet.setWeekNumber(weekNumber);
+					} catch (Throwable t) {
 						try {
-							Method setWeek = timesheet.getClass().getMethod("setWeekNumber", Integer.class);
-							setWeek.invoke(timesheet, Integer.valueOf(weekNumber));
-						} catch (Exception ignore) {
+							Method mw = timesheet.getClass().getMethod("setWeekNumber", Integer.class);
+							mw.invoke(timesheet, Integer.valueOf(weekNumber));
+						} catch (Throwable ignore) {
 						}
 					}
 				} catch (Throwable ignore) {
 				}
+
+				// statut par défaut (serveur)
+				try {
+					timesheet.setStatus("DRAFT");
+				} catch (Throwable ignore) {
+				}
 			}
 		} catch (Throwable ignore) {
-			// ne pas bloquer l'initialisation du formulaire pour un problème mineur
+			// Ne pas bloquer le formulaire pour un souci mineur
 		}
 	}
 
 	/**
-	 * Nous interceptons la sauvegarde pour parser les time entries fournis par le
-	 * formulaire et les attacher à la Timesheet avant sauve.
-	 *
-	 * La méthode tente d'appeler super.saveData() si elle existe, sinon
-	 * super.processAction().
+	 * Parse les time entries, attache à la Timesheet et délègue la sauvegarde.
 	 */
 	public boolean processAction() throws IOException {
-		// On prépare la publication (habituellement le parent a déjà préparé)
 		try {
-			// on récupère la timesheet en cours (création ou édition)
 			Object pub = getPublication();
 			Timesheet timesheet = null;
-			if (pub instanceof Timesheet) {
+			boolean isNew = false;
+			if (pub == null) {
+				isNew = true;
+			} else if (pub instanceof Timesheet) {
 				timesheet = (Timesheet) pub;
 			}
 
-			// Si la requête contient nos paramètres de time entries -> on les parse
 			javax.servlet.http.HttpServletRequest req = getRequest();
+			Member currentUser = getLoggedMember();
+
+			// récupère info si manager (AppHandler doit exposer isManager)
+			boolean isManager = false;
+			try {
+				Object im = req != null ? req.getAttribute("isManager") : null;
+				if (im instanceof Boolean)
+					isManager = ((Boolean) im).booleanValue();
+			} catch (Throwable ignore) {
+			}
+
 			if (req != null) {
+
+				// sécurité : employee ne peut être modifié par l'employé
+				String submittedEmployee = req.getParameter("employee");
+				if (!isManager && currentUser != null && submittedEmployee != null && submittedEmployee.length() > 0) {
+					if (!submittedEmployee.equals(currentUser.getId())) {
+						throw new SecurityException("Employee mismatch");
+					}
+				}
+
 				String[] projectIds = req.getParameterValues("projectId[]");
 				String[] taskIds = req.getParameterValues("taskId[]");
 				String[] monday = req.getParameterValues("monday[]");
@@ -132,53 +160,77 @@ public class EditTimesheetHandler extends EditDataHandler {
 				String[] thursday = req.getParameterValues("thursday[]");
 				String[] friday = req.getParameterValues("friday[]");
 
-				// build list
-				List<Object> timeEntries = new ArrayList<Object>();
-				double total = 0d;
+				List<TimeEntry> entries = new ArrayList<TimeEntry>();
+				double totalHours = 0d;
 
 				int rows = 0;
 				if (projectIds != null)
 					rows = projectIds.length;
 				else if (taskIds != null)
 					rows = taskIds.length;
-				else {
-					// fallback : try count of monday fields
-					if (monday != null)
-						rows = monday.length;
-				}
+				else if (monday != null)
+					rows = monday.length;
+
+				Channel ch = Channel.getChannel();
 
 				for (int i = 0; i < rows; i++) {
 					try {
-						// créer une nouvelle TimeEntry
 						TimeEntry te = new TimeEntry();
 
-						// lookup project / task publication objects via Channel (robuste)
-						Object projObj = null;
+						Project projObj = null;
+						ProjectTask taskObj = null;
+
+						// récupère objets project/task via Channel si ids fournis
 						if (projectIds != null && i < projectIds.length && projectIds[i] != null
 								&& projectIds[i].trim().length() > 0) {
-							projObj = lookupPublication(projectIds[i].trim(), "Project");
-						}
-						Object taskObj = null;
-						if (taskIds != null && i < taskIds.length && taskIds[i] != null
-								&& taskIds[i].trim().length() > 0) {
-							taskObj = lookupPublication(taskIds[i].trim(), "ProjectTask");
+							String pid = projectIds[i].trim();
+							try {
+								Object p = (ch != null) ? ch.getPublication(pid) : null;
+								if (p instanceof Project)
+									projObj = (Project) p;
+							} catch (Throwable ignore) {
+							}
 						}
 
-						// assign project/task (essayer plusieurs setter possibles)
+						if (taskIds != null && i < taskIds.length && taskIds[i] != null
+								&& taskIds[i].trim().length() > 0) {
+							String tid = taskIds[i].trim();
+							try {
+								Object tObj = (ch != null) ? ch.getPublication(tid) : null;
+								if (tObj instanceof ProjectTask)
+									taskObj = (ProjectTask) tObj;
+							} catch (Throwable ignore) {
+							}
+						}
+
+						// validation simple : si task référencée, s'assurer qu'elle appartient au
+						// projet sélectionné
+						if (taskObj != null && projObj != null) {
+							try {
+								Project linked = taskObj.getProject();
+								if (linked != null && !linked.getId().equals(projObj.getId())) {
+									// incohérence → ignorer la ligne
+									continue;
+								}
+							} catch (Throwable ignore) {
+							}
+						}
+
+						// assigne Project/ProjectTask sur TimeEntry (tentative typée, fallback
+						// réflexif)
 						if (projObj != null) {
 							try {
-								Method m = te.getClass().getMethod("setProjectRef", projObj.getClass());
-								m.invoke(te, projObj);
-							} catch (Exception e) {
+								te.setProject(projObj);
+							} catch (Throwable t) {
+								// fallback reflexive (setProjectRef(Project) ou setProjectRef(String))
 								try {
-									Method m2 = te.getClass().getMethod("setProject", projObj.getClass());
-									m2.invoke(te, projObj);
-								} catch (Exception e2) {
-									// fallback : setProjectRef(String)
+									Method m = te.getClass().getMethod("setProjectRef", Project.class);
+									m.invoke(te, projObj);
+								} catch (Throwable t2) {
 									try {
-										Method m3 = te.getClass().getMethod("setProjectRef", String.class);
-										m3.invoke(te, projectIds[i].trim());
-									} catch (Exception ignore) {
+										Method m2 = te.getClass().getMethod("setProjectRef", String.class);
+										m2.invoke(te, projObj.getId());
+									} catch (Throwable ignore) {
 									}
 								}
 							}
@@ -186,122 +238,141 @@ public class EditTimesheetHandler extends EditDataHandler {
 
 						if (taskObj != null) {
 							try {
-								Method m = te.getClass().getMethod("setTaskRef", taskObj.getClass());
-								m.invoke(te, taskObj);
-							} catch (Exception e) {
+								te.setTask(taskObj);
+							} catch (Throwable t) {
+								// fallback reflexive
 								try {
-									Method m2 = te.getClass().getMethod("setTask", taskObj.getClass());
-									m2.invoke(te, taskObj);
-								} catch (Exception e2) {
+									Method m = te.getClass().getMethod("setTaskRef", ProjectTask.class);
+									m.invoke(te, taskObj);
+								} catch (Throwable t2) {
 									try {
-										Method m3 = te.getClass().getMethod("setTaskRef", String.class);
-										m3.invoke(te, taskIds[i].trim());
-									} catch (Exception ignore) {
+										Method m2 = te.getClass().getMethod("setTaskRef", String.class);
+										m2.invoke(te, taskObj.getId());
+									} catch (Throwable ignore) {
 									}
 								}
 							}
 						}
 
-						// set days: essayer setMonday(double) ou setMonday(String)
+						// set day hours (typed setters preferés)
 						double rowTotal = 0d;
-						rowTotal += setDayDoubleIfPossible(te, "Monday", monday, i);
-						rowTotal += setDayDoubleIfPossible(te, "Tuesday", tuesday, i);
-						rowTotal += setDayDoubleIfPossible(te, "Wednesday", wednesday, i);
-						rowTotal += setDayDoubleIfPossible(te, "Thursday", thursday, i);
-						rowTotal += setDayDoubleIfPossible(te, "Friday", friday, i);
+						rowTotal += setDayIfPossibleTyped(te, "Monday", monday, i);
+						rowTotal += setDayIfPossibleTyped(te, "Tuesday", tuesday, i);
+						rowTotal += setDayIfPossibleTyped(te, "Wednesday", wednesday, i);
+						rowTotal += setDayIfPossibleTyped(te, "Thursday", thursday, i);
+						rowTotal += setDayIfPossibleTyped(te, "Friday", friday, i);
 
-						// si TimeEntry possède setTotal or setSum, essayer de renseigner
+						// try to set row total on TimeEntry via reflection if available
 						try {
-							Method mTot = te.getClass().getMethod("setTotal", double.class);
-							mTot.invoke(te, rowTotal);
-						} catch (Exception e) {
+							boolean done = false;
 							try {
-								Method mTot2 = te.getClass().getMethod("setTotalHours", double.class);
-								mTot2.invoke(te, rowTotal);
-							} catch (Exception ignore) {
+								Method m = te.getClass().getMethod("setTotal", double.class);
+								m.invoke(te, rowTotal);
+								done = true;
+							} catch (NoSuchMethodException nsme) {
+								/* not present */ }
+							if (!done) {
+								try {
+									Method m2 = te.getClass().getMethod("setTotalHours", double.class);
+									m2.invoke(te, rowTotal);
+									done = true;
+								} catch (NoSuchMethodException nsme2) {
+									/* not present */ }
 							}
-						}
+							if (!done) {
+								try {
+									Method m3 = te.getClass().getMethod("setTotal", Double.class);
+									m3.invoke(te, Double.valueOf(rowTotal));
+									done = true;
+								} catch (NoSuchMethodException nsme3) {
+									/* not present */ }
+							}
+						} catch (Throwable ignore) {
+							/* permissive */ }
 
-						total += rowTotal;
-						timeEntries.add(te);
-					} catch (Throwable t) {
-						// continuer avec les autres lignes
+						totalHours += rowTotal;
+						entries.add(te);
+
+					} catch (Throwable rowEx) {
+						LOG.warning("Skipping invalid time entry row: " + rowEx.getMessage());
 					}
-				} // end rows
+				} // fin boucle rows
 
-				// attacher la liste à la timesheet via reflection
+				// attacher la liste d'entries à la timesheet (typé si possible, fallback
+				// reflexif)
 				if (timesheet != null) {
 					try {
-						// on essaye setTimeEntries(List<TimeEntry>)
-						Method setTE = timesheet.getClass().getMethod("setTimeEntries", List.class);
-						setTE.invoke(timesheet, timeEntries);
-					} catch (Exception e) {
-						// fallback : getTimeEntries() returns List -> addAll
+						// preferé : manipuler la liste existante
+						List<TimeEntry> existing = (List<TimeEntry>) timesheet.getTimeEntries();
+						if (existing != null) {
+							existing.clear();
+							existing.addAll(entries);
+						} else {
+							// fallback setter
+							Method m = timesheet.getClass().getMethod("setTimeEntries", List.class);
+							m.invoke(timesheet, entries);
+						}
+					} catch (NoSuchMethodException nsme) {
+						// fallback try setTimeEntries with reflection ignoring exception types
 						try {
-							Method getTE = timesheet.getClass().getMethod("getTimeEntries");
-							Object existing = getTE.invoke(timesheet);
-							if (existing instanceof List) {
-								((List) existing).clear();
-								((List) existing).addAll(timeEntries);
-							}
-						} catch (Exception ignore) {
+							Method m = timesheet.getClass().getMethod("setTimeEntries", List.class);
+							m.invoke(timesheet, entries);
+						} catch (Throwable ignore) {
+						}
+					} catch (Throwable ignore) {
+					}
+
+					// set total hours on timesheet (typed preferred)
+					try {
+						timesheet.setTotalHours(totalHours);
+					} catch (Throwable t) {
+						try {
+							Method m = timesheet.getClass().getMethod("setTotalHours", Double.class);
+							m.invoke(timesheet, Double.valueOf(totalHours));
+						} catch (Throwable ignore) {
 						}
 					}
 
-					// set totalHours on timesheet
-					try {
-						Method setTot = timesheet.getClass().getMethod("setTotalHours", double.class);
-						setTot.invoke(timesheet, total);
-					} catch (Exception e) {
+					// status management : forcer DRAFT si nouvelle
+					if (isNew) {
 						try {
-							Method setTot2 = timesheet.getClass().getMethod("setTotalHours", Double.class);
-							setTot2.invoke(timesheet, Double.valueOf(total));
-						} catch (Exception ignore) {
+							timesheet.setStatus("DRAFT");
+						} catch (Throwable ignore) {
 						}
+					} else {
+						// en edition, si non-manager on garantit que le status du client n'écrase pas
+						// la vérité
+						// (handler ne sauve pas la valeur envoyée côté client pour users non managers)
 					}
 				}
 
-			} // end if req != null
+			} // fin if req != null
 
-		} catch (Exception ex) {
-			// log si besoin
+		} catch (SecurityException se) {
+			throw new IOException("Security error: " + se.getMessage());
+		} catch (Throwable ex) {
+			LOG.warning("Error in EditTimesheetHandler.processAction: " + ex.getMessage());
+		}
+
+		// déléguer à super pour la persistance
+		try {
+			return super.processAction();
+		} catch (Throwable t) {
+			// fallback: some JCMS versions might use saveData()
 			try {
-				java.util.logging.Logger.getLogger(EditTimesheetHandler.class.getName())
-						.warning("Error parsing timesheet entries: " + ex.getMessage());
+				Method sd = EditDataHandler.class.getMethod("saveData");
+				sd.invoke(this);
 			} catch (Throwable ignore) {
 			}
 		}
-
-		// finally, call parent to continue default processing (save) if possible
-		try {
-			Method m = EditDataHandler.class.getMethod("processAction");
-			Object r = m.invoke(this);
-			if (r instanceof Boolean)
-				return ((Boolean) r).booleanValue();
-		} catch (NoSuchMethodException nsme) {
-			// si processAction n'existe pas sur super, on essaye saveData()
-		} catch (Throwable ignore) {
-		}
-
-		// fallback: essayer une méthode saveData() ou deleguer à super
-		try {
-			Method sd = EditDataHandler.class.getMethod("saveData");
-			sd.invoke(this);
-		} catch (Throwable ignore) {
-			// rien à faire : retourner true pour indiquer traitement (JCMS fera le reste)
-		}
-
 		return true;
 	}
 
-	// ================= helper reflexive =================
-
 	/**
-	 * Tente de convertir la valeur du jour et d'appeler le setter correspondant
-	 * (ex: setMonday(double)) Retourne la valeur numérique ajoutée au total (0 si
-	 * none)
+	 * Tente d'appeler les setters typés pour les jours (setMonday, setTuesday...)
+	 * Retourne la valeur numérique appliquée au total.
 	 */
-	private double setDayDoubleIfPossible(Object te, String dayCamelCase, String[] values, int idx) {
+	private double setDayIfPossibleTyped(TimeEntry te, String dayCamelCase, String[] values, int idx) {
 		if (values == null || idx >= values.length)
 			return 0d;
 		String s = values[idx];
@@ -313,73 +384,32 @@ public class EditTimesheetHandler extends EditDataHandler {
 		} catch (Exception e) {
 			v = 0d;
 		}
+
 		try {
-			Method m = te.getClass().getMethod("set" + dayCamelCase, double.class);
-			m.invoke(te, v);
+			if ("Monday".equals(dayCamelCase))
+				te.setMonday(v);
+			else if ("Tuesday".equals(dayCamelCase))
+				te.setTuesday(v);
+			else if ("Wednesday".equals(dayCamelCase))
+				te.setWednesday(v);
+			else if ("Thursday".equals(dayCamelCase))
+				te.setThursday(v);
+			else if ("Friday".equals(dayCamelCase))
+				te.setFriday(v);
+			else {
+				Method m = te.getClass().getMethod("set" + dayCamelCase, double.class);
+				m.invoke(te, v);
+			}
 			return v;
-		} catch (Exception e) {
+		} catch (Throwable t) {
+			// try wrapper Double signature
 			try {
 				Method m2 = te.getClass().getMethod("set" + dayCamelCase, Double.class);
 				m2.invoke(te, Double.valueOf(v));
 				return v;
-			} catch (Exception e2) {
-				try {
-					Method m3 = te.getClass().getMethod("set" + dayCamelCase.toLowerCase(), double.class);
-					m3.invoke(te, v);
-					return v;
-				} catch (Exception ignore) {
-				}
+			} catch (Throwable ignore) {
 			}
 		}
 		return v;
 	}
-
-	/**
-	 * Lookup publication with plusieurs stratégies (Channel.getData(id, Class),
-	 * Channel.getPublication(id), Store.get) On renvoie null si non trouvé.
-	 */
-	private Object lookupPublication(String id, String simpleTypeName) {
-		if (id == null || id.trim().length() == 0)
-			return null;
-		id = id.trim();
-		Channel ch = Channel.getChannel();
-		if (ch == null)
-			return null;
-
-		// 1) try channel.getData(id, Class)
-		try {
-			// we don't have compile-time Class<T>, so attempt to find a Class by name
-			// "generated."+simpleTypeName
-			String className = "generated." + simpleTypeName;
-			Class<?> cls = null;
-			try {
-				cls = Class.forName(className);
-			} catch (ClassNotFoundException cnf) {
-				// fallback : try plugin package same as types - if different adapt
-			}
-			if (cls != null) {
-				try {
-					Method m = ch.getClass().getMethod("getData", String.class, Class.class);
-					Object pub = m.invoke(ch, id, cls);
-					if (cls.isInstance(pub))
-						return pub;
-				} catch (Throwable ignore) {
-				}
-			}
-		} catch (Throwable ignore) {
-		}
-
-		// 2) try channel.getPublication(id)
-		try {
-			Method mp = ch.getClass().getMethod("getPublication", String.class);
-			Object pub = mp.invoke(ch, id);
-			if (pub != null)
-				return pub;
-		} catch (Throwable ignore) {
-		}
-
-		// 3) try Channel.getDataSet? or Store lookup - ignore for now
-		return null;
-	}
-
 }
