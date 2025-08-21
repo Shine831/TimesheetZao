@@ -1,36 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates version="5.0">
-  <template name="default" usage="box" file="doSaisieHoraireFullDisplay.jsp">
+  <template name="default" usage="box" file="doTimeEntryFullDisplay.jsp">
     <label xml:lang="en">Default template</label>
     <label xml:lang="fr">Gabarit par défaut</label>
     <description xml:lang="en">The default template for this publication</description>
     <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
   </template>
-  <template name="default" usage="edit" file="editSaisieHoraire.jsp">
+  <template name="default" usage="edit" file="editTimeEntry.jsp">
     <label xml:lang="en">Default template</label>
     <label xml:lang="fr">Gabarit par défaut</label>
     <description xml:lang="en">The default template for this publication</description>
     <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
   </template>
-  <template name="default" usage="editModal" file="editSaisieHoraireModal.jsp">
+  <template name="default" usage="editModal" file="editTimeEntryModal.jsp">
     <label xml:lang="en">Default template</label>
     <label xml:lang="fr">Gabarit par défaut</label>
     <description xml:lang="en">The default template for this publication</description>
     <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
   </template>
-  <template name="default" usage="editModalFull" file="editSaisieHoraireModalFull.jsp">
+  <template name="default" usage="editModalFull" file="editTimeEntryModalFull.jsp">
     <label xml:lang="en">Default template</label>
     <label xml:lang="fr">Gabarit par défaut</label>
     <description xml:lang="en">The default template for this publication</description>
     <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
   </template>
-  <template name="default" usage="full" file="doSaisieHoraireFullDisplay.jsp">
+  <template name="default" usage="full" file="doTimeEntryFullDisplay.jsp">
     <label xml:lang="en">Default template</label>
     <label xml:lang="fr">Gabarit par défaut</label>
     <description xml:lang="en">The default template for this publication</description>
     <description xml:lang="fr">Le gabarit par défaut pour cette publication</description>
   </template>
-  <template name="default" usage="query" file="doSaisieHoraireResultDisplay.jsp">
+  <template name="default" usage="query" file="doTimeEntryResultDisplay.jsp">
     <label xml:lang="en">Default template</label>
     <label xml:lang="fr">Gabarit par défaut</label>
     <description xml:lang="en">The default template for this publication</description>

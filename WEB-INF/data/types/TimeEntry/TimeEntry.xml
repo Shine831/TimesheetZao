@@ -1,84 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<type name="TimeEntry" superclass="com.jalios.jcms.Content"
-	debatable="false" unitFieldEdition="true" audienced="false"
-	categoryTab="false" readRightTab="false" updateRightTab="false"
-	templateTab="false" workflowTab="false" advancedTab="false"
-	database="true" hbm="true" revision="true" categories="">
-	<title ml="true">
-		<label xml:lang="fr">Ligne de saisie</label>
-		<label xml:lang="en">Time entry</label>
-	</title>
-
-	<fields>
-
-		<!-- Lien vers le projet (chooser popup natif JCMS) -->
-		<field name="project" editor="link" required="true"
-			compactDisplay="false" type="generated.Project" parent="false"
-			chooser="popup" ml="false" descriptionType="tooltip"
-			searchable="false" html="false" checkHtml="true">
-			<label xml:lang="fr">Projet</label>
-			<label xml:lang="en">Project</label>
-		</field>
-
-		<!-- Lien vers la tâche de projet (chooser popup natif JCMS) -->
-		<field name="task" editor="link" required="false"
-			compactDisplay="false" type="generated.ProjectTask" parent="false"
-			chooser="popup" ml="false" descriptionType="tooltip"
-			searchable="false" html="false" checkHtml="true">
-			<label xml:lang="fr">Tâche</label>
-			<label xml:lang="en">Task</label>
-		</field>
-
-		<!-- Heures par jour -->
-		<field name="monday" editor="double" required="false"
-			compactDisplay="false" type="double" decimals="2" default="0"
-			ml="false" descriptionType="tooltip" searchable="false" html="false"
-			checkHtml="true">
-			<label xml:lang="fr">Lundi</label>
-		</field>
-
-		<field name="tuesday" editor="double" required="false"
-			compactDisplay="false" type="double" decimals="2" default="0"
-			ml="false" descriptionType="tooltip" searchable="false" html="false"
-			checkHtml="true">
-			<label xml:lang="fr">Mardi</label>
-		</field>
-
-		<field name="wednesday" editor="double" required="false"
-			compactDisplay="false" type="double" decimals="2" default="0"
-			ml="false" descriptionType="tooltip" searchable="false" html="false"
-			checkHtml="true">
-			<label xml:lang="fr">Mercredi</label>
-		</field>
-
-		<field name="thursday" editor="double" required="false"
-			compactDisplay="false" type="double" decimals="2" default="0"
-			ml="false" descriptionType="tooltip" searchable="false" html="false"
-			checkHtml="true">
-			<label xml:lang="fr">Jeudi</label>
-		</field>
-
-		<field name="friday" editor="double" required="false"
-			compactDisplay="false" type="double" decimals="2" default="0"
-			ml="false" descriptionType="tooltip" searchable="false" html="false"
-			checkHtml="true">
-			<label xml:lang="fr">Vendredi</label>
-		</field>
-
-		<!-- Total ligne (optionnel) -->
-		<field name="total" editor="double" required="false"
-			compactDisplay="false" type="double" decimals="2" default="0"
-			ml="false" descriptionType="tooltip" searchable="false" html="false"
-			checkHtml="true">
-			<label xml:lang="fr">Total ligne</label>
-		</field>
-
-		<field name="note" editor="textfield" required="false"
-			compactDisplay="false" type="String" ml="true" size="100">
-			<label xml:lang="fr">Note</label>
-		</field>
-
-	</fields>
-
-	<label xml:lang="fr">Tâche de temps</label>
+<type name="TimeEntry" superclass="com.jalios.jcms.Content" debatable="false" unitFieldEdition="true" audienced="false" categoryTab="false" readRightTab="false" updateRightTab="false" templateTab="false" workflowTab="false" advancedTab="false" database="true" hbm="true" revision="true" categories="">
+  <title ml="true">
+    <label xml:lang="fr">Ligne de saisie</label>
+    <label xml:lang="en">Time entry</label>
+  </title>
+  <fields>
+    <!-- Lien vers le projet (chooser popup natif JCMS) -->
+    <field name="project" editor="link" required="true" compactDisplay="false" type="generated.Project" parent="false" chooser="popup" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Projet</label>
+      <label xml:lang="en">Project</label>
+    </field>
+    <!-- Lien vers la tâche de projet (chooser popup natif JCMS) -->
+    <field name="task" editor="link" required="true" compactDisplay="false" type="generated.ProjectTask" parent="false" chooser="popup" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="en">Task</label>
+      <label xml:lang="fr">Tâche</label>
+    </field>
+    <!-- Heures par jour -->
+    <field name="monday" editor="double" required="false" compactDisplay="false" type="double" decimals="2" default="0" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Lundi</label>
+    </field>
+    <field name="tuesday" editor="double" required="false" compactDisplay="false" type="double" decimals="2" default="0" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Mardi</label>
+    </field>
+    <field name="wednesday" editor="double" required="false" compactDisplay="false" type="double" decimals="2" default="0" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Mercredi</label>
+    </field>
+    <field name="thursday" editor="double" required="false" compactDisplay="false" type="double" decimals="2" default="0" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Jeudi</label>
+    </field>
+    <field name="friday" editor="double" required="false" compactDisplay="false" type="double" decimals="2" default="0" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Vendredi</label>
+    </field>
+    <!-- Total ligne (optionnel) -->
+    <field name="total" editor="double" required="false" compactDisplay="false" type="double" decimals="2" default="0" ml="false" descriptionType="tooltip" searchable="false" html="false" checkHtml="true">
+      <label xml:lang="fr">Total ligne</label>
+    </field>
+    <field name="note" editor="textfield" required="false" compactDisplay="false" type="String" ml="true" size="100">
+      <label xml:lang="fr">Note</label>
+    </field>
+  </fields>
+  <label xml:lang="fr">Tâche de temps</label>
 </type>
+

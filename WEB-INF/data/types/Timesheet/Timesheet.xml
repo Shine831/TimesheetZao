@@ -8,19 +8,16 @@
 		<label xml:lang="fr">Feuille de temps</label>
 		<label xml:lang="en">Timesheet</label>
 	</title>
-
 	<fields>
-
 		<!-- Liste de TimeEntry : type element, multiple -->
-		<field name="timeEntries" editor="link" required="false"
+		<field name="timeEntries" editor="link" required="true"
 			compactDisplay="false" type="generated.TimeEntry" parent="true"
 			multiple="true" ml="false" descriptionType="tooltip"
 			searchable="false" html="false" checkHtml="true" inline="true"
 			cardinality="many">
-			<label xml:lang="fr">Saisies des heures</label>
 			<label xml:lang="en">Time entries</label>
+			<label xml:lang="fr">Saisies des heures</label>
 		</field>
-
 		<field name="weekNumber" editor="int" required="true"
 			compactDisplay="false" type="int" default="0" ml="false"
 			descriptionType="tooltip" searchable="false" html="false"
@@ -28,7 +25,6 @@
 			<label xml:lang="fr">Numéro de semaine</label>
 			<label xml:lang="en">Week number</label>
 		</field>
-
 		<field name="employee" editor="member" required="true"
 			compactDisplay="false" type="com.jalios.jcms.Member" chooser="popup"
 			ml="false" descriptionType="tooltip" searchable="false" html="false"
@@ -36,7 +32,6 @@
 			<label xml:lang="fr">Employé</label>
 			<label xml:lang="en">Employee</label>
 		</field>
-
 		<field name="status" editor="enumerate" required="true"
 			compactDisplay="false" type="String" chooser="listbox"
 			valueList="DRAFT|SUBMITTED|APPROVED|REJECTED"
@@ -46,7 +41,6 @@
 			<label xml:lang="fr">Statut</label>
 			<label xml:lang="en">Status</label>
 		</field>
-
 		<field name="totalHours" editor="double" required="false"
 			compactDisplay="false" type="double" decimals="2" default="0"
 			ml="false" descriptionType="tooltip" searchable="false" html="false"
@@ -54,7 +48,6 @@
 			<label xml:lang="fr">Total Heures Semaine</label>
 			<label xml:lang="en">Total hours</label>
 		</field>
-
 		<field name="rejectionComment" editor="wysiwyg" required="false"
 			compactDisplay="false" type="String" searchable="true" rows="5"
 			cols="80" ml="true" checkHtml="true" inline="true"
@@ -62,8 +55,7 @@
 			<label xml:lang="fr">Commentaire de rejet</label>
 			<label xml:lang="en">Rejection comment</label>
 		</field>
-
 	</fields>
-
 	<label xml:lang="fr">Feuille de temps</label>
 </type>
+

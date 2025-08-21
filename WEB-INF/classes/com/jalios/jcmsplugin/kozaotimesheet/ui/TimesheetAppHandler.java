@@ -2,8 +2,13 @@ package com.jalios.jcmsplugin.kozaotimesheet.ui;
 
 import com.jalios.jcms.handler.QueryHandler;
 import com.jalios.jcms.Channel;
-import com.jalios.jcms.Member;
 import com.jalios.jcms.Group;
+
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Iterator;
+import generated.Project;
+import generated.ProjectTask;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -11,9 +16,6 @@ import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Set;
-
-import generated.Project;
-import generated.ProjectTask;
 
 public class TimesheetAppHandler extends QueryHandler {
 
