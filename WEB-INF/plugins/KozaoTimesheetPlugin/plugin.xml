@@ -12,7 +12,6 @@
 <!--                                                                      -->
 <!-- See plugin's DTD for more information.                               -->
 <!--                                                                      -->
-<!-- Default values are in square brackets                                -->
 <!--                                                                      -->
 <!-- name               Internal plugin name. It must be a unique         -->
 <!--                    name. It should ends with "Plugin".               -->
@@ -104,6 +103,10 @@
     <workflow id="wfkozaotimesheet" />
   </workflows>
 -->
+<workflows>
+  <workflow id="wftimesheet" />
+</workflows>
+
   <!-- ========================== Classes and Jars ======================== -->
   <!--                                                                      -->
   <!-- jars              A Java Library represted by it's relative path to  -->
