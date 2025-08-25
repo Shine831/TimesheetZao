@@ -111,6 +111,7 @@
   <!--                                                                      -->
   <java-classes>
     <java package="com.jalios.jcmsplugin.kozaotimesheet.ui" />
+    <java package="com.jalios.jcmsplugin.kozaotimesheet.filter" />
   </java-classes>
   <!--                                                                      -->
   <!--
@@ -163,7 +164,10 @@
   <!-- jsynclistener     Extends a JCMS JSyncListener to listen             -->
   <!--                   JSync events.                                      -->
   <!--                                                                      -->
-  <!--                                                           
+  <plugincomponents>
+  <queryfilter
+               class="com.jalios.jcmsplugin.kozaotimesheet.filter.ProjectTaskChooserFilter" />
+               </plugincomponents><!--                                                           
   <plugincomponents>
     <storelistener         class="com.example.jcmsplugin.kozaotimesheet.KozaoTimesheetStoreListener"  types="Type1 Type2" beforeStoreLoad="false" repeat="true" />
     <dblistener            class="com.example.jcmsplugin.kozaotimesheet.KozaoTimesheetDBListener"     types="Type1 Type2" />

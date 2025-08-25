@@ -6,11 +6,14 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.logging.Logger;
+
+import javax.servlet.http.HttpServletRequest;
 
 import com.jalios.jcms.handler.EditDataHandler;
 import com.jalios.jcms.Channel;
-import com.jalios.jcms.Data;
 import com.jalios.jcms.Member;
 
 import generated.Timesheet;
@@ -19,18 +22,7 @@ import generated.Project;
 import generated.ProjectTask;
 
 /**
- * EditTimesheetHandler - handler typé et robuste pour Timesheet modal editing.
- *
- * Principes : - Pré-remplissage côté serveur (employee = loggedMember,
- * weekNumber, status = DRAFT) - Parsing sécurisé des tableaux POST
- * (projectId[], taskId[], monday[]..friday[]) - Construction de TimeEntry typés
- * puis attachement à Timesheet - Calcul du total au niveau Timesheet
- * (Timesheet.totalHours) - Respect des permissions : un employé ne peut pas
- * soumettre pour un autre employee
- *
- * Notes : - Si les signatures exactes diffèrent dans ta génération (par ex
- * setProjectRef au lieu de setProject), le handler tente des fallbacks via
- * réflexion.
+ * EditTimesheetHandler - handler robuste pour la création/édition via modal.
  */
 public class EditTimesheetHandler extends EditDataHandler {
 
@@ -41,30 +33,29 @@ public class EditTimesheetHandler extends EditDataHandler {
 		super();
 	}
 
-	/**
-	 * Retourne la classe manipulée (Timesheet)
-	 */
-	public Class<? extends Data> getDataClass() {
+	// Fournir la classe manipulée (compatible avec différentes versions JCMS)
+	public Class<? extends com.jalios.jcms.Data> getDataClass() {
 		return Timesheet.class;
 	}
 
-	/**
-	 * Pré-remplissage à la création : employee = loggedMember, weekNumber, status =
-	 * DRAFT
-	 */
+	// Pré-remplissage à la création : employee = loggedMember, weekNumber, status =
+	// DRAFT
 	public void setupNewPublication() {
 		try {
-			Object pub = getPublication();
-			Timesheet timesheet = null;
+			Object pub = null;
+			try {
+				Method gm = this.getClass().getMethod("getPublication");
+				pub = gm.invoke(this);
+			} catch (Throwable ignore) {
+				pub = null;
+			}
 
+			Timesheet timesheet = null;
 			if (pub == null) {
-				timesheet = new Timesheet();
-				// essayer de lier la publication si le framework le demande
 				try {
+					timesheet = new Timesheet();
 					Method setPub = this.getClass().getMethod("setPublication", Timesheet.class);
 					setPub.invoke(this, timesheet);
-				} catch (NoSuchMethodException nsme) {
-					// méthode non présente, ignore
 				} catch (Throwable ignore) {
 				}
 			} else if (pub instanceof Timesheet) {
@@ -72,22 +63,22 @@ public class EditTimesheetHandler extends EditDataHandler {
 			}
 
 			if (timesheet != null) {
-				// employee
-				Member lm = getLoggedMember();
-				if (lm != null) {
-					try {
-						timesheet.setEmployee(lm); // typé
-					} catch (Throwable t) {
-						// fallback: try setEmployee(String)
+				try {
+					Member lm = getLoggedMember();
+					if (lm != null) {
 						try {
-							Method m = timesheet.getClass().getMethod("setEmployee", String.class);
-							m.invoke(timesheet, lm.getId());
-						} catch (Throwable ignore) {
+							timesheet.setEmployee(lm);
+						} catch (Throwable t) {
+							try {
+								Method m = timesheet.getClass().getMethod("setEmployee", String.class);
+								m.invoke(timesheet, lm.getId());
+							} catch (Throwable ignore) {
+							}
 						}
 					}
+				} catch (Throwable ignore) {
 				}
 
-				// semaine courante
 				try {
 					Calendar cal = GregorianCalendar.getInstance();
 					int year = cal.get(Calendar.YEAR);
@@ -105,35 +96,36 @@ public class EditTimesheetHandler extends EditDataHandler {
 				} catch (Throwable ignore) {
 				}
 
-				// statut par défaut (serveur)
 				try {
 					timesheet.setStatus("DRAFT");
 				} catch (Throwable ignore) {
 				}
 			}
 		} catch (Throwable ignore) {
-			// Ne pas bloquer le formulaire pour un souci mineur
+			LOG.fine("setupNewPublication fallback: " + ignore.getMessage());
 		}
 	}
 
-	/**
-	 * Parse les time entries, attache à la Timesheet et délègue la sauvegarde.
-	 */
+	// Traitement de la sauvegarde : parse rows, crée TimeEntry et attache à
+	// Timesheet
 	public boolean processAction() throws IOException {
 		try {
-			Object pub = getPublication();
-			Timesheet timesheet = null;
-			boolean isNew = false;
-			if (pub == null) {
-				isNew = true;
-			} else if (pub instanceof Timesheet) {
-				timesheet = (Timesheet) pub;
+			Object pub = null;
+			try {
+				Method gm = this.getClass().getMethod("getPublication");
+				pub = gm.invoke(this);
+			} catch (Throwable ignore) {
+				pub = null;
 			}
 
-			javax.servlet.http.HttpServletRequest req = getRequest();
+			boolean isNew = (pub == null);
+			Timesheet timesheet = null;
+			if (pub instanceof Timesheet)
+				timesheet = (Timesheet) pub;
+
+			HttpServletRequest req = getRequest();
 			Member currentUser = getLoggedMember();
 
-			// récupère info si manager (AppHandler doit exposer isManager)
 			boolean isManager = false;
 			try {
 				Object im = req != null ? req.getAttribute("isManager") : null;
@@ -143,8 +135,7 @@ public class EditTimesheetHandler extends EditDataHandler {
 			}
 
 			if (req != null) {
-
-				// sécurité : employee ne peut être modifié par l'employé
+				// sécurité : l'employé ne peut pas soumettre pour un autre user
 				String submittedEmployee = req.getParameter("employee");
 				if (!isManager && currentUser != null && submittedEmployee != null && submittedEmployee.length() > 0) {
 					if (!submittedEmployee.equals(currentUser.getId())) {
@@ -152,201 +143,220 @@ public class EditTimesheetHandler extends EditDataHandler {
 					}
 				}
 
-				String[] projectIds = req.getParameterValues("projectId[]");
-				String[] taskIds = req.getParameterValues("taskId[]");
-				String[] monday = req.getParameterValues("monday[]");
-				String[] tuesday = req.getParameterValues("tuesday[]");
-				String[] wednesday = req.getParameterValues("wednesday[]");
-				String[] thursday = req.getParameterValues("thursday[]");
-				String[] friday = req.getParameterValues("friday[]");
+				// parse rows (ton parseRowsFromRequest)
+				List<Map<String, String>> rows = parseRowsFromRequest(req);
 
-				List<TimeEntry> entries = new ArrayList<TimeEntry>();
-				double totalHours = 0d;
-
-				int rows = 0;
-				if (projectIds != null)
-					rows = projectIds.length;
-				else if (taskIds != null)
-					rows = taskIds.length;
-				else if (monday != null)
-					rows = monday.length;
-
+				List<TimeEntry> parsedEntries = new ArrayList<TimeEntry>();
+				double total = 0d;
 				Channel ch = Channel.getChannel();
 
-				for (int i = 0; i < rows; i++) {
+				for (int i = 0; i < rows.size(); i++) {
+					Map<String, String> row = rows.get(i);
 					try {
 						TimeEntry te = new TimeEntry();
+
+						String projectId = firstNonNull(row.get("projectId"), row.get("project"), row.get("project_id"),
+								row.get("projectRef"));
+						String taskId = firstNonNull(row.get("taskId"), row.get("task"), row.get("task_id"),
+								row.get("taskRef"));
 
 						Project projObj = null;
 						ProjectTask taskObj = null;
 
-						// récupère objets project/task via Channel si ids fournis
-						if (projectIds != null && i < projectIds.length && projectIds[i] != null
-								&& projectIds[i].trim().length() > 0) {
-							String pid = projectIds[i].trim();
+						if (projectId != null && projectId.trim().length() > 0 && ch != null) {
 							try {
-								Object p = (ch != null) ? ch.getPublication(pid) : null;
+								Object p = ch.getPublication(projectId.trim());
 								if (p instanceof Project)
 									projObj = (Project) p;
 							} catch (Throwable ignore) {
 							}
 						}
 
-						if (taskIds != null && i < taskIds.length && taskIds[i] != null
-								&& taskIds[i].trim().length() > 0) {
-							String tid = taskIds[i].trim();
+						if (taskId != null && taskId.trim().length() > 0 && ch != null) {
 							try {
-								Object tObj = (ch != null) ? ch.getPublication(tid) : null;
-								if (tObj instanceof ProjectTask)
-									taskObj = (ProjectTask) tObj;
+								Object t = ch.getPublication(taskId.trim());
+								if (t instanceof ProjectTask)
+									taskObj = (ProjectTask) t;
 							} catch (Throwable ignore) {
 							}
 						}
 
-						// validation simple : si task référencée, s'assurer qu'elle appartient au
-						// projet sélectionné
+						// si task et project fournis, vérifier cohérence
 						if (taskObj != null && projObj != null) {
 							try {
-								Project linked = taskObj.getProject();
+								Project linked = null;
+								try {
+									linked = taskObj.getProject();
+								} catch (Throwable re) {
+									try {
+										Method mg = taskObj.getClass().getMethod("getProject");
+										Object p = mg.invoke(taskObj);
+										if (p instanceof Project)
+											linked = (Project) p;
+									} catch (Throwable ignore) {
+									}
+								}
 								if (linked != null && !linked.getId().equals(projObj.getId())) {
-									// incohérence → ignorer la ligne
+									LOG.warning("Row " + i + " : task does not belong to project -> skipping");
 									continue;
 								}
 							} catch (Throwable ignore) {
 							}
 						}
 
-						// assigne Project/ProjectTask sur TimeEntry (tentative typée, fallback
-						// réflexif)
+						// validation d'assignation (si non manager)
+						if (!isManager && taskObj != null && currentUser != null) {
+							try {
+								Object ass = null;
+								try {
+									ass = taskObj.getAssignee();
+								} catch (Throwable ignore) {
+								}
+								if (ass == null) {
+									try {
+										ass = taskObj.getAssigneeId();
+									} catch (Throwable ignore) {
+									}
+								}
+								String aid = null;
+								if (ass instanceof String)
+									aid = (String) ass;
+								else if (ass != null) {
+									try {
+										Object idObj = ass.getClass().getMethod("getId").invoke(ass);
+										if (idObj != null)
+											aid = String.valueOf(idObj);
+									} catch (Throwable ignore) {
+									}
+								}
+								if (aid != null && !aid.equals(currentUser.getId())) {
+									LOG.warning("Row " + i + " : task not assigned to current user -> skipping");
+									continue;
+								}
+							} catch (Throwable ignore) {
+							}
+						}
+
+						// assign project
 						if (projObj != null) {
+							boolean assigned = false;
 							try {
 								te.setProject(projObj);
+								assigned = true;
 							} catch (Throwable t) {
-								// fallback reflexive (setProjectRef(Project) ou setProjectRef(String))
 								try {
-									Method m = te.getClass().getMethod("setProjectRef", Project.class);
+									Method m = te.getClass().getMethod("setProject", Project.class);
 									m.invoke(te, projObj);
-								} catch (Throwable t2) {
-									try {
-										Method m2 = te.getClass().getMethod("setProjectRef", String.class);
-										m2.invoke(te, projObj.getId());
-									} catch (Throwable ignore) {
-									}
+									assigned = true;
+								} catch (Throwable ignore) {
+								}
+							}
+							if (!assigned) {
+								try {
+									Method m = te.getClass().getMethod("setProjectRef", String.class);
+									m.invoke(te, projObj.getId());
+								} catch (Throwable ignore) {
 								}
 							}
 						}
 
+						// assign task (ProjectTask)
 						if (taskObj != null) {
+							boolean assigned = false;
 							try {
 								te.setTask(taskObj);
+								assigned = true;
 							} catch (Throwable t) {
-								// fallback reflexive
 								try {
-									Method m = te.getClass().getMethod("setTaskRef", ProjectTask.class);
+									Method m = te.getClass().getMethod("setTask", ProjectTask.class);
 									m.invoke(te, taskObj);
-								} catch (Throwable t2) {
-									try {
-										Method m2 = te.getClass().getMethod("setTaskRef", String.class);
-										m2.invoke(te, taskObj.getId());
-									} catch (Throwable ignore) {
-									}
+									assigned = true;
+								} catch (Throwable ignore) {
+								}
+							}
+							if (!assigned) {
+								try {
+									Method m = te.getClass().getMethod("setTaskRef", String.class);
+									m.invoke(te, taskObj.getId());
+								} catch (Throwable ignore) {
 								}
 							}
 						}
 
-						// set day hours (typed setters preferés)
+						// set days
 						double rowTotal = 0d;
-						rowTotal += setDayIfPossibleTyped(te, "Monday", monday, i);
-						rowTotal += setDayIfPossibleTyped(te, "Tuesday", tuesday, i);
-						rowTotal += setDayIfPossibleTyped(te, "Wednesday", wednesday, i);
-						rowTotal += setDayIfPossibleTyped(te, "Thursday", thursday, i);
-						rowTotal += setDayIfPossibleTyped(te, "Friday", friday, i);
+						rowTotal += parseAndSetDay(te, "Monday", row);
+						rowTotal += parseAndSetDay(te, "Tuesday", row);
+						rowTotal += parseAndSetDay(te, "Wednesday", row);
+						rowTotal += parseAndSetDay(te, "Thursday", row);
+						rowTotal += parseAndSetDay(te, "Friday", row);
 
-						// try to set row total on TimeEntry via reflection if available
+						// try set total on time entry
 						try {
-							boolean done = false;
+							Method m = te.getClass().getMethod("setTotal", double.class);
+							m.invoke(te, rowTotal);
+						} catch (Throwable e1) {
 							try {
-								Method m = te.getClass().getMethod("setTotal", double.class);
-								m.invoke(te, rowTotal);
-								done = true;
-							} catch (NoSuchMethodException nsme) {
-								/* not present */ }
-							if (!done) {
-								try {
-									Method m2 = te.getClass().getMethod("setTotalHours", double.class);
-									m2.invoke(te, rowTotal);
-									done = true;
-								} catch (NoSuchMethodException nsme2) {
-									/* not present */ }
+								Method m2 = te.getClass().getMethod("setTotalHours", double.class);
+								m2.invoke(te, rowTotal);
+							} catch (Throwable ignore) {
 							}
-							if (!done) {
-								try {
-									Method m3 = te.getClass().getMethod("setTotal", Double.class);
-									m3.invoke(te, Double.valueOf(rowTotal));
-									done = true;
-								} catch (NoSuchMethodException nsme3) {
-									/* not present */ }
-							}
-						} catch (Throwable ignore) {
-							/* permissive */ }
+						}
 
-						totalHours += rowTotal;
-						entries.add(te);
+						total += rowTotal;
+						parsedEntries.add(te);
 
 					} catch (Throwable rowEx) {
-						LOG.warning("Skipping invalid time entry row: " + rowEx.getMessage());
+						LOG.warning("Skipping invalid time entry row " + i + " : " + rowEx.getMessage());
 					}
-				} // fin boucle rows
+				} // end rows loop
 
-				// attacher la liste d'entries à la timesheet (typé si possible, fallback
-				// reflexif)
+				// attacher à la timesheet
 				if (timesheet != null) {
 					try {
-						// preferé : manipuler la liste existante
-						List<TimeEntry> existing = (List<TimeEntry>) timesheet.getTimeEntries();
-						if (existing != null) {
-							existing.clear();
-							existing.addAll(entries);
-						} else {
-							// fallback setter
-							Method m = timesheet.getClass().getMethod("setTimeEntries", List.class);
-							m.invoke(timesheet, entries);
-						}
-					} catch (NoSuchMethodException nsme) {
-						// fallback try setTimeEntries with reflection ignoring exception types
+						// try to get existing list
 						try {
-							Method m = timesheet.getClass().getMethod("setTimeEntries", List.class);
-							m.invoke(timesheet, entries);
-						} catch (Throwable ignore) {
+							Method mg = timesheet.getClass().getMethod("getTimeEntries");
+							Object existing = mg.invoke(timesheet);
+							if (existing instanceof java.util.List) {
+								java.util.List existingList = (java.util.List) existing;
+								existingList.clear();
+								existingList.addAll(parsedEntries);
+							} else {
+								try {
+									Method ms = timesheet.getClass().getMethod("setTimeEntries", java.util.List.class);
+									ms.invoke(timesheet, parsedEntries);
+								} catch (Throwable ignore) {
+								}
+							}
+						} catch (Throwable tget) {
+							try {
+								Method ms = timesheet.getClass().getMethod("setTimeEntries", java.util.List.class);
+								ms.invoke(timesheet, parsedEntries);
+							} catch (Throwable ignore) {
+							}
 						}
 					} catch (Throwable ignore) {
 					}
 
-					// set total hours on timesheet (typed preferred)
 					try {
-						timesheet.setTotalHours(totalHours);
+						timesheet.setTotalHours(total);
 					} catch (Throwable t) {
 						try {
-							Method m = timesheet.getClass().getMethod("setTotalHours", Double.class);
-							m.invoke(timesheet, Double.valueOf(totalHours));
+							Method mth = timesheet.getClass().getMethod("setTotalHours", Double.class);
+							mth.invoke(timesheet, Double.valueOf(total));
 						} catch (Throwable ignore) {
 						}
 					}
 
-					// status management : forcer DRAFT si nouvelle
 					if (isNew) {
 						try {
 							timesheet.setStatus("DRAFT");
 						} catch (Throwable ignore) {
 						}
-					} else {
-						// en edition, si non-manager on garantit que le status du client n'écrase pas
-						// la vérité
-						// (handler ne sauve pas la valeur envoyée côté client pour users non managers)
 					}
 				}
-
-			} // fin if req != null
+			}
 
 		} catch (SecurityException se) {
 			throw new IOException("Security error: " + se.getMessage());
@@ -354,11 +364,10 @@ public class EditTimesheetHandler extends EditDataHandler {
 			LOG.warning("Error in EditTimesheetHandler.processAction: " + ex.getMessage());
 		}
 
-		// déléguer à super pour la persistance
+		// déléguer la persistance
 		try {
 			return super.processAction();
 		} catch (Throwable t) {
-			// fallback: some JCMS versions might use saveData()
 			try {
 				Method sd = EditDataHandler.class.getMethod("saveData");
 				sd.invoke(this);
@@ -368,44 +377,166 @@ public class EditTimesheetHandler extends EditDataHandler {
 		return true;
 	}
 
-	/**
-	 * Tente d'appeler les setters typés pour les jours (setMonday, setTuesday...)
-	 * Retourne la valeur numérique appliquée au total.
-	 */
-	private double setDayIfPossibleTyped(TimeEntry te, String dayCamelCase, String[] values, int idx) {
-		if (values == null || idx >= values.length)
+	// ----------------- Helpers -----------------
+
+	private static String firstNonNull(String... vals) {
+		if (vals == null)
+			return null;
+		for (String s : vals)
+			if (s != null && s.trim().length() > 0)
+				return s;
+		return null;
+	}
+
+	// parseRowsFromRequest: tu as déjà cette impl dans ton projet. Je réutilise la
+	// même signature.
+	// (Si tu as une version légèrement différente garde la tienne)
+	private List<Map<String, String>> parseRowsFromRequest(HttpServletRequest req) {
+		Map<Integer, Map<String, String>> indexed = new TreeMap<Integer, Map<String, String>>();
+
+		// arrays path
+		String[] projArr = req.getParameterValues("projectId[]");
+		String[] taskArr = req.getParameterValues("taskId[]");
+		String[] mondayArr = req.getParameterValues("monday[]");
+		String[] tuesdayArr = req.getParameterValues("tuesday[]");
+		String[] wednesdayArr = req.getParameterValues("wednesday[]");
+		String[] thursdayArr = req.getParameterValues("thursday[]");
+		String[] fridayArr = req.getParameterValues("friday[]");
+
+		if (projArr != null || taskArr != null || mondayArr != null) {
+			int rows = 0;
+			if (projArr != null)
+				rows = projArr.length;
+			else if (taskArr != null)
+				rows = taskArr.length;
+			else if (mondayArr != null)
+				rows = mondayArr.length;
+			for (int i = 0; i < rows; i++) {
+				Map<String, String> map = new TreeMap<String, String>();
+				if (projArr != null && i < projArr.length)
+					map.put("projectId", projArr[i]);
+				if (taskArr != null && i < taskArr.length)
+					map.put("taskId", taskArr[i]);
+				if (mondayArr != null && i < mondayArr.length)
+					map.put("monday", mondayArr[i]);
+				if (tuesdayArr != null && i < tuesdayArr.length)
+					map.put("tuesday", tuesdayArr[i]);
+				if (wednesdayArr != null && i < wednesdayArr.length)
+					map.put("wednesday", wednesdayArr[i]);
+				if (thursdayArr != null && i < thursdayArr.length)
+					map.put("thursday", thursdayArr[i]);
+				if (fridayArr != null && i < fridayArr.length)
+					map.put("friday", fridayArr[i]);
+				indexed.put(i, map);
+			}
+		} else {
+			Map<String, String[]> pmap = req.getParameterMap();
+			java.util.regex.Pattern pIndexDot = java.util.regex.Pattern.compile("^([^\\[]+)\\[(\\d+)\\]\\.(.+)$");
+			java.util.regex.Pattern pRowSuffix = java.util.regex.Pattern.compile("^([a-zA-Z0-9_\\-]+)_row(\\d+)$");
+			java.util.regex.Pattern pSimpleRow = java.util.regex.Pattern.compile("^([a-zA-Z0-9_\\-]+)_(\\d+)$");
+			for (String param : pmap.keySet()) {
+				try {
+					String[] vals = pmap.get(param);
+					if (vals == null || vals.length == 0)
+						continue;
+					String val = vals[0];
+					java.util.regex.Matcher m = pIndexDot.matcher(param);
+					if (m.matches()) {
+						int idx = Integer.parseInt(m.group(2));
+						String key = m.group(3);
+						Map<String, String> map = indexed.get(idx);
+						if (map == null) {
+							map = new TreeMap<String, String>();
+							indexed.put(idx, map);
+						}
+						map.put(key, val);
+						continue;
+					}
+					m = pRowSuffix.matcher(param);
+					if (m.matches()) {
+						String key = m.group(1);
+						int idx = Integer.parseInt(m.group(2));
+						Map<String, String> map = indexed.get(idx);
+						if (map == null) {
+							map = new TreeMap<String, String>();
+							indexed.put(idx, map);
+						}
+						map.put(key, val);
+						continue;
+					}
+					m = pSimpleRow.matcher(param);
+					if (m.matches()) {
+						String key = m.group(1);
+						int idx = Integer.parseInt(m.group(2));
+						Map<String, String> map = indexed.get(idx);
+						if (map == null) {
+							map = new TreeMap<String, String>();
+							indexed.put(idx, map);
+						}
+						map.put(key, val);
+						continue;
+					}
+					java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("^(.*?)(\\d+)$").matcher(param);
+					if (m2.matches()) {
+						String key = m2.group(1);
+						int idx = Integer.parseInt(m2.group(2));
+						Map<String, String> map = indexed.get(idx);
+						if (map == null) {
+							map = new TreeMap<String, String>();
+							indexed.put(idx, map);
+						}
+						map.put(key, val);
+						continue;
+					}
+				} catch (Throwable t) {
+					LOG.fine("Ignored param parsing issue for " + param + " : " + t.getMessage());
+				}
+			}
+		}
+
+		List<Map<String, String>> result = new ArrayList<Map<String, String>>();
+		if (!indexed.isEmpty()) {
+			for (Map.Entry<Integer, Map<String, String>> e : indexed.entrySet())
+				result.add(e.getValue());
+		}
+		return result;
+	}
+
+	private double parseAndSetDay(Object te, String dayCamelCase, Map<String, String> row) {
+		String[] keys = new String[] { dayCamelCase.toLowerCase(), dayCamelCase,
+				dayCamelCase.substring(0, 3).toLowerCase(), dayCamelCase.substring(0, 3) };
+		String raw = null;
+		for (String k : keys)
+			if (row.containsKey(k) && row.get(k) != null) {
+				raw = row.get(k);
+				break;
+			}
+		if (raw == null)
 			return 0d;
-		String s = values[idx];
-		if (s == null || s.trim().length() == 0)
+		raw = raw.trim();
+		if (raw.length() == 0)
 			return 0d;
 		double v = 0d;
 		try {
-			v = Double.parseDouble(s.replace(',', '.'));
-		} catch (Exception e) {
+			v = Double.parseDouble(raw.replace(',', '.'));
+		} catch (Throwable ignore) {
 			v = 0d;
 		}
 
 		try {
-			if ("Monday".equals(dayCamelCase))
-				te.setMonday(v);
-			else if ("Tuesday".equals(dayCamelCase))
-				te.setTuesday(v);
-			else if ("Wednesday".equals(dayCamelCase))
-				te.setWednesday(v);
-			else if ("Thursday".equals(dayCamelCase))
-				te.setThursday(v);
-			else if ("Friday".equals(dayCamelCase))
-				te.setFriday(v);
-			else {
-				Method m = te.getClass().getMethod("set" + dayCamelCase, double.class);
-				m.invoke(te, v);
-			}
+			Method m = te.getClass().getMethod("set" + dayCamelCase, double.class);
+			m.invoke(te, v);
 			return v;
-		} catch (Throwable t) {
-			// try wrapper Double signature
+		} catch (Throwable e1) {
 			try {
 				Method m2 = te.getClass().getMethod("set" + dayCamelCase, Double.class);
 				m2.invoke(te, Double.valueOf(v));
+				return v;
+			} catch (Throwable ignore) {
+			}
+			try {
+				Method m3 = te.getClass().getMethod("set" + dayCamelCase.toLowerCase(), double.class);
+				m3.invoke(te, v);
 				return v;
 			} catch (Throwable ignore) {
 			}

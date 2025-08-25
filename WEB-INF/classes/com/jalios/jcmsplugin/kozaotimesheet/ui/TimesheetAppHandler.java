@@ -3,6 +3,7 @@ package com.jalios.jcmsplugin.kozaotimesheet.ui;
 import com.jalios.jcms.handler.QueryHandler;
 import com.jalios.jcms.Channel;
 import com.jalios.jcms.Group;
+import com.jalios.jcms.Member;
 
 import generated.Project;
 import generated.ProjectTask;
@@ -94,29 +95,74 @@ public class TimesheetAppHandler extends QueryHandler {
 			// never fail init because of request attribute setting
 		}
 
-		// --- Fournir allowedProjects / allowedTasks (typié) pour la modale ---
+		// --- Fournir allowedProjects / allowedTasks filtrés pour la modale ---
 		try {
 			if (getRequest() != null) {
 				List<Project> allowedProjects = new ArrayList<Project>();
 				List<ProjectTask> allowedTasks = new ArrayList<ProjectTask>();
 
 				Channel ch = Channel.getChannel();
+				boolean isManager = false;
+				try {
+					isManager = canAccessManagerView();
+				} catch (Throwable ignore) {
+				}
+
 				if (ch != null) {
 					// récupération typée via API Channel (retourne Set)
 					try {
-						Set<Project> projSet = ch.getPublicationSet(Project.class, this.loggedMember);
-						if (projSet != null)
-							allowedProjects.addAll(projSet);
+						Set<ProjectTask> taskSet = null;
+						try {
+							taskSet = ch.getPublicationSet(ProjectTask.class, this.loggedMember);
+						} catch (Throwable t) {
+							// fallback: ignore if not available
+						}
+						if (taskSet != null) {
+							for (ProjectTask t : taskSet) {
+								try {
+									// try to read assignee as com.jalios.jcms.Member
+									Member assignee = null;
+									try {
+										assignee = t.getAssignee();
+									} catch (Throwable e) {
+										// fallback: try reflection
+										try {
+											Object a = t.getClass().getMethod("getAssignee").invoke(t);
+											if (a instanceof Member)
+												assignee = (Member) a;
+										} catch (Throwable ignore) {
+										}
+									}
+
+									// keep task if manager OR assignee == loggedMember
+									if (isManager || (assignee != null && this.loggedMember != null
+											&& assignee.getId().equals(this.loggedMember.getId()))) {
+										allowedTasks.add(t);
+										// also add project of that task
+										try {
+											Project p = t.getProject();
+											if (p != null && !allowedProjects.contains(p))
+												allowedProjects.add(p);
+										} catch (Throwable ignore) {
+										}
+									}
+								} catch (Throwable ignore) {
+								}
+							}
+						}
 					} catch (Throwable ignore) {
-						// fallback: ignore if method not present in this JCMS version
+						// fallback: ignore
 					}
 
-					try {
-						Set<ProjectTask> taskSet = ch.getPublicationSet(ProjectTask.class, this.loggedMember);
-						if (taskSet != null)
-							allowedTasks.addAll(taskSet);
-					} catch (Throwable ignore) {
-						// fallback
+					// If no tasks found (or API unavailable), fall back to projects visible to user
+					if (allowedTasks.isEmpty()) {
+						try {
+							Set<Project> projSet = ch.getPublicationSet(Project.class, this.loggedMember);
+							if (projSet != null && !projSet.isEmpty()) {
+								allowedProjects.addAll(projSet);
+							}
+						} catch (Throwable ignore) {
+						}
 					}
 				}
 

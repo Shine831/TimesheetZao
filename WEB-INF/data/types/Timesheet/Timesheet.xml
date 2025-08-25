@@ -32,7 +32,7 @@
 			<label xml:lang="fr">Employé</label>
 			<label xml:lang="en">Employee</label>
 		</field>
-		<field name="status" editor="enumerate" required="true"
+		<field name="status" editor="enumerate" required="false"
 			compactDisplay="false" type="String" chooser="listbox"
 			valueList="DRAFT|SUBMITTED|APPROVED|REJECTED"
 			labelList="Brouillon|Soumis|Approuvé|Rejeté" ml="false"
